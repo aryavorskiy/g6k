@@ -20,7 +20,13 @@
 
 #include "siever.h"
 #include "fht_lsh.h"
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
 #include <immintrin.h>
+#elif defined(__aarch64__) || defined(__arm__)
+// #include <arm_neon.h>
+#else
+#error "Unsupported architecture"
+#endif
 #include <stdio.h>
 #include <assert.h>
 #include <cstring>
@@ -308,7 +314,7 @@ void Siever::bdgl_queue_create_task( const size_t t_id, const std::vector<QEntry
             continue;
         }
         bdgl_reduce_with_delayed_replace( queue[index].i, queue[index].j, 
-                                                  cdb[std::min(S-1, insert_after+params.threads*write_index)].len / REDUCE_LEN_MARGIN,
+                                                  cdb[std::min(S-1, static_cast<size_t>(insert_after+params.threads*write_index))].len / REDUCE_LEN_MARGIN,
                                                   transaction_db, write_index, queue[index].len, queue[index].sign);
         if( write_index < 0 ){
             std::cerr << "Spilling full transaction db" << t_id << " " << Q-index << std::endl;

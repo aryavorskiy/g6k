@@ -70,12 +70,12 @@ inline Simd::VecType Simd::m256_hadd_epi16(const Simd::VecType a,
   // useful.
 
   static constexpr Vec16s hadd_shift_mask_epi16 = {
-      0, 2, 4, 6, 16, 18, 20, 22, 8, 10, 12, 14, 24, 26, 28, 30};
+    0, 2, 4, 6, 16, 18, 20, 22, 8, 10, 12, 14, 24, 26, 28, 30};
   static constexpr Vec16s shift_right_1_epi16 = {1, 2,  3,  4,  5,  6,  7,  8,
                                                  9, 10, 11, 12, 13, 14, 15, 0};
 
-  const auto a1 = __builtin_shuffle(a, shift_right_1_epi16);
-  const auto b1 = __builtin_shuffle(b, shift_right_1_epi16);
+  const auto a1 = __builtin_shufflevector(a, shift_right_1_epi16);
+  const auto b1 = __builtin_shufflevector(b, shift_right_1_epi16);
 
   // a2 = (a[0] + a[1], a[1] + a[2]  , a[2] + a[3], a[3] + a[4],
   //       a[4] + a[5], a[5] + a[6]  , a[6] + a[7], a[7] + a[8],
@@ -89,7 +89,7 @@ inline Simd::VecType Simd::m256_hadd_epi16(const Simd::VecType a,
   // The mask works by shuffling mod the length of the vector.
   // This means that (for example) a value of `18` refers to b2[2], whereas `2`
   // refers to a2[2].
-  return __builtin_shuffle(a2, b2, hadd_shift_mask_epi16);
+  return __builtin_shufflevector(a2, b2, 0, 2, 4, 6, 16, 18, 20, 22, 8, 10, 12, 14, 24, 26, 28, 30);
 #endif
 }
 
@@ -167,7 +167,7 @@ inline Simd::VecType Simd::m256_permute4x64_epi64(const VecType a) {
   constexpr Vec4q temp_mask{mask & 3, (mask & 12) >> 2, (mask & 48) >> 4,
                             (mask & 192) >> 6};
   return reinterpret_cast<Vec16s>(
-      __builtin_shuffle(reinterpret_cast<Vec4q>(a), temp_mask));
+      __builtin_shufflevector(reinterpret_cast<Vec4q>(a), temp_mask));
 #endif
 }
 
@@ -184,7 +184,7 @@ Simd::m256_permute4x64_epi64_for_hadamard(const VecType a) {
   // got no idea beyond that.
   constexpr Vec4q mask{arr[3], arr[2], arr[1], arr[0]};
   return reinterpret_cast<Vec16s>(
-      __builtin_shuffle(reinterpret_cast<Vec4q>(a), mask));
+      __builtin_shufflevector(reinterpret_cast<Vec4q>(a), mask));
 #endif
 }
 
@@ -200,7 +200,7 @@ inline int Simd::m256_testz_si256(const VecType a, const VecType b) {
 
   Vec8s p1, p2;
   memcpy(&p1, &res, sizeof(p1));
-  memcpy(&p2, &res[8], sizeof(p2));
+  memcpy(&p2, reinterpret_cast<const char*>(&res) + sizeof(Vec8s), sizeof(p2));
 
   __int128_t lhs = reinterpret_cast<__int128_t>(p1);
   __int128_t rhs = reinterpret_cast<__int128_t>(p2);
@@ -313,8 +313,8 @@ inline Simd::VecType Simd::m256_broadcastsi128_si256(const SmallVecType in) {
   // code. A better solution (although still slower than the ideal case) is to
   // use memcpy, since GCC seems to do better there: I have no idea why.
   Vec16s out;
-  memcpy(&out[0], &in[0], sizeof(Vec8s));
-  memcpy(&out[8], &in[0], sizeof(Vec8s));
+  memcpy(&out, &in, sizeof(Vec8s));
+  memcpy(reinterpret_cast<char*>(&out) + sizeof(Vec8s), &in, sizeof(Vec8s));
   return out;
 #endif
 }
@@ -332,7 +332,7 @@ inline Simd::SmallVecType Simd::m128_shuffle_epi8(const SmallVecType in,
   // So now we've gotten that match, we'll want to make the shuffle. Sounds
   // easy, right?
   const auto intermediate =
-      __builtin_shuffle(reinterpret_cast<Vec16c>(in), shuffle_mask);
+      __builtin_shufflevector(reinterpret_cast<Vec16c>(in), shuffle_mask);
 
   // Aha! Gotcha.
   // It turns out the mm_shuffle_epi8 intrinsic is a bit weird.
@@ -351,8 +351,8 @@ inline Simd::VecType Simd::m256_shuffle_epi8(const VecType in,
 #ifdef HAVE_AVX2
   return _mm256_shuffle_epi8(in, mask);
 #else
-  // WARNING: you cannot use the native __builtin_shuffle here.
-  // As tempting as it might seem, the reason why is that __builtin_shuffle
+  // WARNING: you cannot use the native __builtin_shufflevector here.
+  // As tempting as it might seem, the reason why is that __builtin_shufflevector
   // let's you do cross-lane shuffles, whereas the _mm256_shuffle_epi8 intrinsic
   // does not. To fix this problem, we sub-divide: we deal with each 128-bit
   // segment separately and then re-combine at the end.
@@ -363,9 +363,9 @@ inline Simd::VecType Simd::m256_shuffle_epi8(const VecType in,
   // NOTE: the compiler is likely to turn these into moves, since these
   // variables are most likely in registers.
   memcpy(&first, &in, sizeof(Vec8s));
-  memcpy(&last, &in[8], sizeof(Vec8s));
+  memcpy(&last, reinterpret_cast<const char*>(&in) + sizeof(Vec8s), sizeof(Vec8s));
   memcpy(&first_mask, &mask, sizeof(Vec8s));
-  memcpy(&last_mask, &mask[8], sizeof(Vec8s));
+  memcpy(&last_mask, reinterpret_cast<const char*>(&mask) + sizeof(Vec8s), sizeof(Vec8s));
 
   // Delegate to the 128-bit version.
   auto res_1 = Simd::m128_shuffle_epi8(
@@ -375,7 +375,7 @@ inline Simd::VecType Simd::m256_shuffle_epi8(const VecType in,
 
   // Same caveat as above.
   memcpy(&result, &res_1, sizeof(Vec8s));
-  memcpy(&result[8], &res_2, sizeof(Vec8s));
+  memcpy(reinterpret_cast<char*>(&result) + sizeof(Vec8s), &res_2, sizeof(Vec8s));
   return result;
 #endif
 }

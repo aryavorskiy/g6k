@@ -4,8 +4,15 @@
 #include "g6k_config.h"
 
 #include <cstdint>
-#include <immintrin.h>
 #include <iostream>
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)
+#include <immintrin.h>
+#elif defined(__aarch64__) || defined(__arm__)
+// #include <arm_neon.h>
+#else
+#error "Unsupported architecture"
+#endif
 
 /**
    Simd. This namespace provides access to a variety of low-level SIMD routines
